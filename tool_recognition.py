@@ -116,7 +116,7 @@ image_datasets = {x: cholec_dataset(os.path.join(data_dir, x), x,
                                     transform)
                   for x in ['Train', 'Validation', 'Test']}
 
-dataloaders = {x: DataLoader(image_datasets[x], batch_size=64,
+dataloaders = {x: DataLoader(image_datasets[x], batch_size=8,
                                               shuffle=True, num_workers=8)
                for x in ['Train', 'Validation', 'Test']}
 
@@ -158,9 +158,9 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 inputs = batch['image']
                 labels = batch['tools']
 
-                if iterator%50 == 0:
-                    print('Iteration {}'.format(iterator))
-                iterator += 1
+                # if iterator%50 == 0:
+                #     print('Iteration {}'.format(iterator))
+                # iterator += 1
 
                 inputs = inputs.to(device)
                 labels = labels.to(device)
@@ -224,14 +224,9 @@ def test_model(model):
     running_corrects = 0.0
 
     with torch.no_grad():
-        iterator = 1
         for batch in iter(dataloaders['Test']):
             inputs = batch['image']
             labels = batch['tools']
-
-            if iterator % 50 == 0:
-                print('Iteration {}'.format(iterator))
-            iterator += 1
 
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -256,8 +251,8 @@ def test_model(model):
     print('Test accuracy: {}'.format(test_acc))
 
 model_conv = torchvision.models.resnet152(pretrained=True)
-for param in model_conv.parameters():
-    param.requires_grad = False
+# for param in model_conv.parameters():
+#     param.requires_grad = False
 
 # Parameters of newly constructed modules have requires_grad=True by default
 num_ftrs = model_conv.fc.in_features
@@ -268,7 +263,11 @@ criterion = nn.BCELoss()
 
 # Observe that only parameters of final layer are being optimized as
 # opoosed to before.
-optimizer_conv = optim.SGD(model_conv.fc.parameters(), lr=0.001, momentum=0.9)
+optimizer_conv = optim.SGD(model_conv.parameters(), lr=0.001, momentum=0.9)
+# optimizer_conv = optim.SGD([
+#     {'params': model_conv.parameters(), 'lr': 0.001},
+#     {'params': model_conv.fc.parameters(), 'lr': 0.001}
+# ], lr = 0.001, momentum=0.9)
 
 # Decay LR by a factor of 0.1 every 7 epochs
 exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)

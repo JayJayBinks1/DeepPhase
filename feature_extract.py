@@ -49,7 +49,7 @@ class cholec_dataset(Dataset):
             upper_bound = 79
 
         else:
-            lower_bound = 37
+            lower_bound = 1
             upper_bound = 40
 
         image_names = list()
@@ -103,7 +103,7 @@ else:
 def extract_features(model):
 
     with torch.no_grad():
-        for phase in ['Train', 'Validation']:
+        for phase in ['Test']:
             video_number = '0'
             output_string = ''
             for batch in iter(dataloaders[phase]):

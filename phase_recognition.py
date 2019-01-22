@@ -34,7 +34,7 @@ class cholec_dataset(Dataset):
         self.images = self.get_images(directory, phase)
         self.phase_annotations = self.get_phase_annotations(directory, phase)
         if len(self.images) != len(self.phase_annotations):
-            print("There's a problem")
+            print("There's a problem {}".format(self.phase))
             print(len(self.images))
             print(len(self.phase_annotations))
         self.transform = transform
@@ -81,13 +81,13 @@ class cholec_dataset(Dataset):
         image_sequences = list()
 
         length = int(len(image_features)/self.sequence_length)
-
         for i in range(length):
             sequence = list()
             start = self.sequence_length*i
             for j in range(start, start+self.sequence_length):
                 sequence.append(image_features[j])
             image_sequences.append(sequence)
+
         return image_sequences
 
     def get_phase_annotations(self, directory, phase):
@@ -146,7 +146,7 @@ class PhaseTagger(nn.Module):
     def forward(self, input):
         hidden_output, self.hidden = self.lstm(input, self.hidden)
         output = self.hidden2out(hidden_output)
-        output = softmax(output)
+        # output = softmax(output)
         output_resized = torch.randn(len(output), self.output_dim)
         for i in range(len(output)):
             output_resized[i] = output[i][0]
@@ -156,13 +156,13 @@ class PhaseTagger(nn.Module):
 print('Loading data...')
 
 image_datasets = {x: cholec_dataset(os.path.join(data_dir, x), x)
-                  for x in ['Train', 'Validation', 'Test']}
+                  for x in ['Train', 'Test']}
 
 dataloaders = {x: DataLoader(image_datasets[x], batch_size=1,
                                               shuffle=False, num_workers=0)
-               for x in ['Train', 'Validation', 'Test']}
+               for x in ['Train', 'Test']}
 
-dataset_sizes = {x: len(image_datasets[x]) for x in ['Train', 'Validation', 'Test']}
+dataset_sizes = {x: len(image_datasets[x]) for x in ['Train', 'Test']}
 
 print('Data loaded!')
 
@@ -191,7 +191,7 @@ def train_model(lstm_model, criterion, optimiser, num_epochs=4):
         print('Epoch {}/{}'.format(epoch + 1, num_epochs))
         print('-' * 10)
 
-        for phase in ['Train', 'Validation']:
+        for phase in ['Train']:
             if phase == 'Train':
                 lstm_model.train()
             else:
@@ -258,7 +258,7 @@ def train_model(lstm_model, criterion, optimiser, num_epochs=4):
                 phase, epoch_loss, epoch_acc))
 
             # deep copy the model
-            if phase == 'Validation' and epoch_acc > best_acc:
+            if epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(lstm_model.state_dict())
         print()
@@ -272,14 +272,58 @@ def train_model(lstm_model, criterion, optimiser, num_epochs=4):
     lstm_model.load_state_dict(best_model_wts)
     return lstm_model
 
+def test_model(model):
+    model.eval()
+
+    running_corrects = 0.0
+
+    with torch.no_grad():
+        for batch in iter(dataloaders['Test']):
+            inputs = batch['images']
+            phases = batch['phases']
+
+            inputs = inputs.to(device)
+            phases = phases.to(device)
+
+            model.hidden = model.init_hidden()
+
+            output = model(inputs[0])
+
+            # compute prediction
+            sequence_corrects = 0.0
+            for i in range(len(output)):
+                predictions = output[i]
+                correct_phase = phases[0][i]
+
+                largest_prediction = 0
+                largest_prediction_index = 0
+                for j in range(len(predictions)):
+                    if predictions[j] > largest_prediction:
+                        largest_prediction = predictions[j]
+                        largest_prediction_index = j
+                if largest_prediction_index == correct_phase:
+                    sequence_corrects += 1
+
+            sequence_corrects = sequence_corrects / len(output)
+            running_corrects += sequence_corrects
+
+    test_acc = running_corrects / dataset_sizes['Test']
+    print('Test accuracy: {}'.format(test_acc))
 
 softmax = nn.Softmax(2)
 model_lstm = PhaseTagger(2048, 128, 8, softmax)
 model_lstm = model_lstm.to(device)
-optimiser = optim.Adam(model_lstm.parameters(), lr=0.001, betas=(0.9, 0.999))
+optimiser = optim.SGD(model_lstm.parameters(), lr=0.001, momentum=0.9)
 criterion = nn.CrossEntropyLoss()
 
-train_model(model_lstm, criterion, optimiser)
+model_lstm = train_model(model_lstm, criterion, optimiser, num_epochs=50)
 
+# Save model
+print('Saving model...')
+torch.save(model_lstm.state_dict(), '/media/jayden/JaydenHD/cholec80/phase_tagger.pt')
+print('Saved!')
+
+print('Testing')
+test_model(model_lstm)
 
 
